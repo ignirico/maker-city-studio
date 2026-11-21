@@ -14,6 +14,24 @@ test('shared state persists, stale or concurrent first saves cannot overwrite it
  assert.equal((await put(revision)).status,200);
  const result=await (await worker.fetch(request('/api/board'),e)).json();assert.deepEqual(result.state,valid);
 });
+test('a published right-column reference keeps its placement alongside older inline references', async () => {
+  const state = structuredClone(valid);
+  const inline = state.boards.global.items[0];
+  state.boards.global.items.push({
+    ...inline, id: 'right-video', kind: 'link', placement: 'right',
+    url: 'https://example.test/clip.mp4'
+  });
+  const environment = env();
+  const published = await worker.fetch(request('/api/board', {
+    method: 'PUT', headers: {...auth, 'If-Match': 'seed'}, body: JSON.stringify(state)
+  }), environment);
+  assert.equal(published.status, 200);
+  const read = await worker.fetch(request('/api/board'), environment);
+  const [original, video] = (await read.json()).state.boards.global.items;
+  assert.equal(original.placement, undefined);
+  assert.equal(video.placement, 'right');
+  assert.equal(video.anchor, inline.anchor);
+});
 test('anonymous users cannot publish or upload; unsupported and oversized uploads are rejected',async()=>{
  const e=env();assert.equal((await worker.fetch(request('/api/board',{method:'PUT',body:'{}'}),e)).status,401);
  assert.equal((await worker.fetch(request('/api/upload',{method:'POST',body:'x'}),e)).status,401);
