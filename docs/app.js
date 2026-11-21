@@ -227,7 +227,14 @@ function mediaInfo(item){
  if(['bilibili.com','m.bilibili.com'].includes(host)){const id=path.match(/\/(BV\w+)/)?.[1];if(id)return {kind:'embed',url:'https://player.bilibili.com/player.html?bvid='+id+'&autoplay=0'}}
  return {kind:'link',url:u.href};
 }
-function mediaHTML(item){const m=mediaInfo(item),src=esc(m.url||item.url);if(m.kind==='image')return `<img src="${src}" alt="${esc(item.title)}" loading="lazy" draggable="false">`;if(m.kind==='video')return `<video src="${src}" controls playsinline preload="metadata"></video>`;if(m.kind==='audio')return `<audio src="${src}" controls preload="metadata"></audio>`;if(m.kind==='embed')return `<iframe src="${src}" title="${esc(item.title)}" loading="lazy" allow="fullscreen;encrypted-media;picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;return `<a href="${src}" target="_blank" rel="noopener noreferrer">打开参考影片</a>`}
+function mediaHTML(item){
+ const m=mediaInfo(item),src=esc(m.url||item.url);
+ if(item.kind==='file' && item.mime.startsWith('video/')){
+   const base=location.hostname.endsWith('.chatgpt.site') ? mobileOrigin+'/' : './';
+   const preview=esc(base+'previews/'+encodeURIComponent(item.file));
+   return `<video controls playsinline preload="metadata" poster="${preview}.jpg"><source src="${preview}.mp4" type="video/mp4"><source src="${src}"></video>`;
+ }
+ if(m.kind==='image')return `<img src="${src}" alt="${esc(item.title)}" loading="lazy" draggable="false">`;if(m.kind==='video')return `<video src="${src}" controls playsinline preload="metadata"></video>`;if(m.kind==='audio')return `<audio src="${src}" controls preload="metadata"></audio>`;if(m.kind==='embed')return `<iframe src="${src}" title="${esc(item.title)}" loading="lazy" allow="fullscreen;encrypted-media;picture-in-picture" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;return `<a href="${src}" target="_blank" rel="noopener noreferrer">打开参考影片</a>`}
 function renderReferences(){
  if(!script)return;
  document.body.classList.toggle('editing',editing);$('#edit').hidden=editing;$('#save').hidden=!editing;$('#finish').hidden=!editing;$('#save').disabled=!online||busy;$('.editor-help').hidden=!editing;

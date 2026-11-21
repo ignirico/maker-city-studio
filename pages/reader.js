@@ -11,12 +11,15 @@ export function filePath(item) {
   return './published/' + item.file + '.' + extensions[item.mime];
 }
 
-function media(item, files, origin) {
+function media(item, files, origin, previews) {
   if (item.kind === 'note') return '<p>' + esc(item.text) + '</p>';
-  let source, type, embed;
+  let source, type, embed, previewFile;
   if (item.kind === 'file') {
     source = files.has(item.file) ? filePath(item) : origin + '/media/' + encodeURIComponent(item.file);
     type = item.mime.split('/')[0];
+    if (type === 'video' && !files.has(item.file)) {
+      previewFile = './previews/' + encodeURIComponent(item.file) + '.mp4';
+    }
   } else {
     let link;
     try { link = new URL(item.url); } catch { return ''; }
@@ -38,18 +41,23 @@ function media(item, files, origin) {
     if (/\.(mp3|m4a|ogg|wav)$/i.test(link.pathname)) type='audio';
   }
   const src=esc(source), title=esc(item.title || '参考素材');
+  const poster = item.kind === 'file' && type === 'video' ? ' poster="./previews/'+esc(encodeURIComponent(item.file))+'.jpg"' : '';
   let preview='';
-  if(type==='video') preview='<video controls playsinline preload="metadata" src="'+src+'"></video>';
+  if(type==='video') preview='<video controls playsinline preload="metadata"'+poster+' src="'+src+'"></video>';
+  if (previewFile) {
+    preview = '<video controls playsinline preload="metadata"'+poster+'><source src="'+esc(previewFile)+'" type="video/mp4"><source src="'+src+'"></video>';
+  }
   if(type==='audio') preview='<audio controls preload="metadata" src="'+src+'"></audio>';
   if(type==='image') preview='<img loading="lazy" alt="'+title+'" src="'+src+'">';
   if(embed) preview='<iframe title="'+title+'" src="'+esc(embed)+'" loading="lazy" allowfullscreen></iframe>';
-  return preview+'<a href="'+src+'">'+(type==='video'?'单独打开影片':'打开原素材')+'</a>';
+  const direct = previewFile && previews.has(item.file) ? esc(previewFile) : src;
+  return preview+'<a href="'+direct+'">'+(type==='video'?'单独打开影片':'打开原素材')+'</a>';
 }
 
-export function renderReader(script, board, files, origin) {
+export function renderReader(script, board, files, origin, previews = new Set()) {
   function figure(item, sectionId) {
     const width=Math.max(20,Math.min(100,Number(item.w)||60));
-    return '<figure id="ref-'+esc(sectionId)+'-'+esc(item.id)+'" style="--width:'+width+'%"><figcaption>'+esc(item.title)+'</figcaption>'+media(item, files, origin)+(item.note?'<p>'+esc(item.note)+'</p>':'')+'</figure>';
+    return '<figure id="ref-'+esc(sectionId)+'-'+esc(item.id)+'" style="--width:'+width+'%"><figcaption>'+esc(item.title)+'</figcaption>'+media(item, files, origin, previews)+(item.note?'<p>'+esc(item.note)+'</p>':'')+'</figure>';
   }
   function section(id, lines) {
     const items=board.state.boards[id]?.items || [];
@@ -71,6 +79,6 @@ export function renderReader(script, board, files, origin) {
   const chapters=script.chapters.map(c=>'<section id="'+esc(c.id)+'"><h2>'+esc(c.start+'–'+c.end+'｜'+c.number+' '+c.title)+'</h2>'+(c.id==='chapter-01'?'':'<p>'+esc(c.subtitle)+'</p>')+section(c.id,c.paragraphs)+'</section>').join('');
   const stamp=board.updatedAt?' · '+new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(board.updatedAt)):'';
   return '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>muShenzhen 2026 — 脚本与参考</title><style>'+
-    'body{font:16px/1.8 system-ui,sans-serif;color:#111;background:white;margin:0}header,main{max-width:1120px;margin:auto;padding:12px 20px}header{font-size:14px;border-bottom:1px solid #ddd}header span{margin-left:1em;color:#555}a{color:#185abc}h1{font-size:26px}h2{font-size:20px}p,figcaption{white-space:pre-wrap;overflow-wrap:anywhere}section{margin:2.5rem 0}figure{margin:1rem 0;width:var(--width);min-width:min(180px,100%);max-width:100%}img,video,audio,iframe{display:block;width:100%;height:auto;max-height:75vh}iframe{border:0;aspect-ratio:16/9}figure a{font-size:14px}@media(min-width:900px){.columns{display:flow-root;padding-right:33%}.columns aside{float:right;clear:right;width:44%;margin-right:-49%}.columns aside figure:first-child{margin-top:0}}@media(max-width:899px){figure{width:100%}}'+
+    'body{font:16px/1.8 system-ui,sans-serif;color:#111;background:white;margin:0}header,main{max-width:1120px;margin:auto;padding:12px 20px}header{font-size:14px;border-bottom:1px solid #ddd}header span{margin-left:1em;color:#555}a{color:#185abc}h1{font-size:26px}h2{font-size:20px}p,figcaption{white-space:pre-wrap;overflow-wrap:anywhere}section{margin:2.5rem 0}figure{margin:1rem 0;width:var(--width);min-width:min(180px,100%);max-width:100%}img,video,audio,iframe{display:block;width:100%;height:auto;max-height:75vh}iframe{border:0;aspect-ratio:16/9}figure a{font-size:14px}figure:has(video,iframe)>figcaption{color:#812d35;font-weight:600}figure:has(video,iframe)>figcaption::before{content:"";display:inline-block;border-block:.3em solid transparent;border-left:.48em solid currentColor;margin-right:.45em}@media(min-width:900px){.columns{display:flow-root;padding-right:33%}.columns aside{float:right;clear:right;width:44%;margin-right:-49%}.columns aside figure:first-child{margin-top:0}}@media(max-width:899px){figure{width:100%}}'+
     '</style></head><body><header><a href="./index.html?edit=1">编辑参考</a><span>已发布'+esc(stamp)+'</span></header><main><h1>'+esc(script.intro[0])+'</h1><h2>'+esc(script.intro[1])+'</h2><p>'+esc(script.intro[2])+'</p>'+section('global',script.intro.slice(3))+chapters+'</main></body></html>';
 }

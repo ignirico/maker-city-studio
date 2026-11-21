@@ -25,7 +25,8 @@ async function readingPage(request, env) {
       asset('/script.json'), asset('/published/version.json'),
     ]);
     if (!board.ok || !script.ok || !manifest.ok) throw new Error('Live reader unavailable');
-    const html = renderReader(await script.json(), await board.json(), new Set((await manifest.json()).files), origin);
+    const snapshot = await manifest.json();
+    const html = renderReader(await script.json(), await board.json(), new Set(snapshot.files), origin, new Set(snapshot.previews));
     return new Response(request.method === 'HEAD' ? null : html, {headers:{
       'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','X-Robots-Tag':'noindex, nofollow'
     }});
@@ -44,6 +45,17 @@ export default {
         return env.ASSETS.fetch(new Request(new URL('/', request.url), {method: request.method}));
       }
       return readingPage(request, env);
+    }
+    if (/^\/previews\/[a-f0-9-]{36}\.(mp4|jpg)$/.test(pathname) && ['GET','HEAD'].includes(request.method)) {
+      const type = pathname.endsWith('.jpg') ? 'image/jpeg' : 'video/mp4';
+      const local = await env.ASSETS.fetch(request);
+      if (local.ok && local.headers.get('Content-Type')?.startsWith(type)) return local;
+      // A new upload can reach the scheduled GitHub publication between Cloudflare deployments.
+      const headers = new Headers();
+      if (request.headers.has('Range')) headers.set('Range', request.headers.get('Range'));
+      const remote = await fetch(github + '/maker-city-studio' + pathname, {method:request.method, headers});
+      if (remote.ok && remote.headers.get('Content-Type')?.startsWith(type)) return remote;
+      return new Response(null,{status:404,headers:{'Cache-Control':'no-store'}});
     }
     if (!pathname.startsWith('/api/') && !pathname.startsWith('/media/')) {
       return env.ASSETS.fetch(request);

@@ -19,3 +19,12 @@ body{font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-se
     align-items: start;
   }
 }
+
+.reference:has(video, iframe) > .ref-title, #preview-content:has(video, iframe) > h3 { color: #812d35; }
+.reference:has(video, iframe) > .ref-title::before, #preview-content:has(video, iframe) > h3::before {
+  content: "";
+  display: inline-block;
+  border-block: .3em solid transparent;
+  border-left: .48em solid currentColor;
+  margin-right: .45em;
+}

@@ -21,3 +21,5 @@ npm run dev
 本地预览为内存存储，重启即清空，与生产隔离；本地口令 local-preview-only。Sites 源代码与构建包通过插件 source workflow 推送、保存、部署；GitHub Pages 更新需构建并推送 main。
 
 Safari 阅片页 read.html 使用原生 HTML 播放器。手机入口在服务端读取最新发布内容，连接失败时提供上一次部署的独立阅片页。部署 Cloudflare 前依次运行 npm run build、node scripts/build-reader.mjs dist/pages --cloudflare 和 wrangler pages deploy dist/pages --project-name mushenzhen-script --branch main。GitHub Pages Actions 从共享存储取回已发布的媒体，只放入部署包；脚本仓库不保存影片。GitHub 静态阅片页在推送时构建，并于每小时第 13 和 43 分钟检查已发布内容是否变化。
+
+发布时使用 FFmpeg 为上传影片生成 H.264/AAC 网页预览和取自影片的 JPEG 封面，保留上传原件。页面优先播放预览，新上传的素材在下次同步生成预览前使用原件。

@@ -34,7 +34,12 @@ jobs:
             fi
           fi
       - if: steps.changes.outputs.skip != 'true'
-        run: node scripts/build-reader.mjs docs
+        run: |
+          if ! command -v ffmpeg > /dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y ffmpeg
+          fi
+          node scripts/build-reader.mjs docs
       - if: steps.changes.outputs.skip != 'true'
         uses: actions/upload-pages-artifact@v5
         with:
