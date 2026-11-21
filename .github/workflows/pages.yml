@@ -13,11 +13,10 @@ concurrency:
   group: script-pages
   cancel-in-progress: false
 jobs:
-  publish:
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.release.outputs.page_url }}
+    outputs:
+      skip: ${{ steps.changes.outputs.skip }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -37,10 +36,17 @@ jobs:
       - if: steps.changes.outputs.skip != 'true'
         run: node scripts/build-reader.mjs docs
       - if: steps.changes.outputs.skip != 'true'
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: docs
           retention-days: 1
-      - if: steps.changes.outputs.skip != 'true'
-        id: release
-        uses: actions/deploy-pages@v4
+  publish:
+    needs: build
+    if: needs.build.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.release.outputs.page_url }}
+    steps:
+      - id: release
+        uses: actions/deploy-pages@v5
