@@ -6,3 +6,7 @@ await writeFile('dist/server/index.js','const ASSETS = '+JSON.stringify(assets)+
 await writeFile('dist/.openai/hosting.json',await readFile('.openai/hosting.json'));
 await rm('docs',{recursive:true,force:true});await cp('public','docs',{recursive:true});await writeFile('docs/.nojekyll','');
 console.log('Built embedded Worker and shared-board API.');
+
+// Cloudflare Pages serves the document and streams the existing shared files from the same origin.
+await cp('public', 'dist/pages', {recursive:true});
+await cp('pages', 'dist/pages', {recursive:true});

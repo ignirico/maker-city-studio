@@ -1,12 +1,28 @@
-const API = ['localhost','127.0.0.1'].includes(location.hostname) ? location.origin : 'https://maker-city-reference-studio.ignirico.chatgpt.site';
+const mobileOrigin = 'https://mushenzhen-script.pages.dev';
+const storageOrigin = 'https://maker-city-reference-studio.ignirico.chatgpt.site';
+const sharedOrigins = location.hostname === 'ignirico.github.io'
+  ? [mobileOrigin, storageOrigin]
+  : [location.origin];
+let activeOrigin = sharedOrigins[0];
+
+function editorSession(value) {
+  try {
+    if (value === undefined) return sessionStorage.getItem('maker-editor') || '';
+    if (value) sessionStorage.setItem('maker-editor', value);
+    else sessionStorage.removeItem('maker-editor');
+  } catch {
+    // Reading and editing still work when the browser disables session storage.
+  }
+  return '';
+}
 const $ = (selector,root=document) => root.querySelector(selector);
 const $$ = (selector,root=document) => [...root.querySelectorAll(selector)];
 const esc = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let script, state={boards:{}}, revision='seed', token=sessionStorage.getItem('maker-editor')||'', editing=false, dirty=false, busy=false, online=false, editVersion=0, chapter='global', anchor='end', editingItem=null, dragged=null, messageTimer;
+let script, state={boards:{}}, revision='seed', token=editorSession(), editing=false, dirty=false, busy=false, online=false, editVersion=0, chapter='global', anchor='end', editingItem=null, dragged=null, messageTimer;
 const names={global:'影片概述 / 整体参考'};
 const wideScreen = window.matchMedia('(min-width: 900px)');
 let layoutFrame = 0;
-const railObserver = new ResizeObserver(queueRailLayout);
+const railObserver = window.ResizeObserver ? new ResizeObserver(queueRailLayout) : null;
 
 function queueRailLayout() {
   if (layoutFrame) return;
@@ -43,7 +59,7 @@ function alignRail(rail) {
 
 // A media element has one home at a time, including on narrow screens.
 function arrangeSideReferences() {
-  railObserver.disconnect();
+  railObserver?.disconnect();
   let hasSideReferences = false;
   for (const layout of $$('.chapter-layout')) {
     const rail = $('.reference-rail', layout);
@@ -56,14 +72,14 @@ function arrangeSideReferences() {
     for (const group of groups) {
       if (wideScreen.matches) {
         rail.append(group);
-        railObserver.observe(group);
+        railObserver?.observe(group);
       } else {
         const inlineZone = $(`.reference-zone:not(.side-zone)[data-anchor="${group.dataset.anchor}"]`, scriptColumn);
         inlineZone.after(group);
         group.style.marginTop = '';
       }
     }
-    if (!rail.hidden) railObserver.observe(scriptColumn);
+    if (!rail.hidden) railObserver?.observe(scriptColumn);
   }
   $('#document').classList.toggle('with-side-references', hasSideReferences);
   queueRailLayout();
@@ -91,14 +107,66 @@ function referenceZone(chapterId, item) {
   return sideZone;
 }
 
-wideScreen.addEventListener('change', arrangeSideReferences);
+if (wideScreen.addEventListener) wideScreen.addEventListener('change', arrangeSideReferences);
+else wideScreen.addListener(arrangeSideReferences);
+if (!railObserver) window.addEventListener('resize', queueRailLayout);
 function message(text){$('#message').textContent=text;$('#message').hidden=false;clearTimeout(messageTimer);messageTimer=setTimeout(()=>$('#message').hidden=true,6000)}
 function status(text){$('#status').textContent=text}
 function changed(){dirty=true;editVersion++;status('有未发布的修改')}
 function board(id){return state.boards[id] ||= {items:[],height:720}}
 function safeURL(value){try{const u=new URL(value);return ['https:','http:'].includes(u.protocol)?u:null}catch{return null}}
-async function api(path,options={}){const r=await fetch(API+path,{...options,headers:{...(token?{Authorization:'Bearer '+token}:{}),...options.headers}});let data;try{data=await r.json()}catch{throw new Error('共享服务暂时无法连接，请稍后重试。')}if(!r.ok){const e=new Error(data.error||'请求失败');e.status=r.status;throw e}return data}
-async function load(){try{const data=await api('/api/board');state=data.state;revision=data.revision;online=true;dirty=false;status('已连接共享参考');renderReferences()}catch(e){online=false;status('共享参考暂时无法连接，请刷新重试');message(e.message)}}
+async function api(path,options={}){const r=await fetch(activeOrigin+path,{...options,headers:{...(token?{Authorization:'Bearer '+token}:{}),...options.headers}});let data;try{data=await r.json()}catch{throw new Error('共享服务暂时无法连接，请稍后重试。')}if(!r.ok){const e=new Error(data.error||'请求失败');e.status=r.status;throw e}return data}
+async function fetchBoard(origin) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    // Public reads need no editor credential or CORS preflight.
+    const response = await fetch(origin + '/api/board', {
+      signal: controller.signal, credentials: 'omit', cache: 'no-store',
+    });
+    if (!response.ok) throw new Error('共享资料读取失败');
+    const data = await response.json();
+    if (!data?.state?.boards || typeof data.revision !== 'string') throw new Error('共享资料格式错误');
+    return data;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function load() {
+  $('#retry').hidden = true;
+  $('#edit').disabled = true;
+  status('正在读取共享参考…');
+  let boardData;
+  for (const origin of sharedOrigins) {
+    try {
+      boardData = await fetchBoard(origin);
+      activeOrigin = origin;
+      break;
+    } catch {
+      // Try the next read endpoint. Mutations are sent only once.
+    }
+  }
+  if (!boardData) {
+    online = false;
+    status('未能连接共享参考');
+    $('#retry').hidden = false;
+    return;
+  }
+  state = boardData.state;
+  revision = boardData.revision;
+  online = true;
+  try {
+    renderReferences();
+    status('已连接共享参考');
+    $('#edit').disabled = false;
+  } catch {
+    online = false;
+    status('已读取共享参考，显示时遇到问题');
+    $('#retry').hidden = false;
+  }
+}
+$('#retry').onclick = load;
 function paragraphs(id){return id==='global'?script.intro.slice(3):script.chapters.find(c=>c.id===id).paragraphs}
 function renderDocument(){
  $('#document').innerHTML=`<h1>${esc(script.intro[0])}</h1><h2 style="margin-top:5px">${esc(script.intro[1])}</h2><p>${esc(script.intro[2])}</p><p class="editor-help" hidden>添加或编辑参考时，可选择「段落下方」或「右栏」。拖动「移动」可换位置；拖右下角可调宽度；完成后点击「发布更新」。手机可通过「编辑」选择放置段落。</p>`+renderSection('global')+script.chapters.map(c=>`<section id="${c.id}"><h2>${c.start}–${c.end}｜${c.number} ${esc(c.title)}<a class="chapter-link" href="#${c.id}">本节链接</a></h2>${c.id==='chapter-01'?'':`<p class="subtitle">${esc(c.subtitle)}</p>`}${renderSection(c.id)}</section>`).join('');
@@ -140,7 +208,7 @@ function renderDocument(){
 }
 function renderSection(id){const zone=a=>`<div class="reference-zone" data-chapter="${id}" data-anchor="${a}"></div>`;return `<div class="chapter-layout" id="${id==='global'?'global':'content-'+id}"><div class="script-column">`+paragraphs(id).map((p,index)=>`<div class="paragraph"><p>${esc(p)}</p>${zone(String(index))}</div>`).join('')+`<div class="section-end">${zone('end')}<button class="add-reference" data-chapter="${id}" data-anchor="end" hidden>添加参考</button></div></div><aside class="reference-rail" aria-label="右栏参考" hidden></aside></div>`}
 function mediaInfo(item){
- if(item.kind==='file')return {kind:item.mime.startsWith('image/')?'image':item.mime.startsWith('audio/')?'audio':'video',url:API+'/media/'+item.file};
+ if(item.kind==='file')return {kind:item.mime.startsWith('image/')?'image':item.mime.startsWith('audio/')?'audio':'video',url:activeOrigin+'/media/'+item.file};
  const u=safeURL(item.url);if(!u)return {kind:'link'};const host=u.hostname.replace(/^www\./,''),path=u.pathname;
  if(/\.(mp4|webm|mov)$/i.test(path))return {kind:'video',url:u.href};
  if(/\.(jpg|jpeg|png|gif|webp|avif)$/i.test(path))return {kind:'image',url:u.href};
@@ -173,7 +241,7 @@ function updateType(){const type=$('#type').value;$('#file-label').hidden=type!=
 function openReference(id='global',a='end',item=null){if(!editing){$('#login').showModal();return}chapter=id;anchor=a;editingItem=item;$('#reference-form').reset();$('#form-error').textContent='';$('#chapter').value=id;populateAnchors(a);$('#placement').value=item?.placement||'inline';$('#type').value=item?.kind||'file';$('#type').disabled=!!item;$('#form-title').textContent=item?'编辑参考':'添加参考';$('#submit-reference').textContent=item?'保存修改':'添加';if(item){$('#url').value=item.url||'';$('#title').value=item.title;$('#text').value=item.text||'';$('#note').value=item.note||''}updateType();$('#reference-dialog').showModal()}
 $('#type').onchange=updateType;$('#chapter').onchange=()=>populateAnchors();
 const mimes={jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',webp:'image/webp',gif:'image/gif',avif:'image/avif',mp4:'video/mp4',webm:'video/webm',mov:'video/quicktime',mp3:'audio/mpeg',m4a:'audio/mp4',wav:'audio/wav'};
-function upload(file,mime){return new Promise((resolve,reject)=>{const xhr=new XMLHttpRequest();xhr.open('POST',API+'/api/upload');xhr.timeout=600000;xhr.setRequestHeader('Authorization','Bearer '+token);xhr.setRequestHeader('Content-Type',mime);xhr.upload.onprogress=e=>{if(e.lengthComputable)$('#submit-reference').textContent='上传 '+Math.round(e.loaded/e.total*100)+'%'};xhr.onload=()=>{let d;try{d=JSON.parse(xhr.responseText)}catch{reject(new Error('上传服务异常，请重试。'));return}xhr.status>=200&&xhr.status<300?resolve(d):reject(new Error(d.error||'上传失败'))};xhr.onerror=()=>reject(new Error('上传连接中断，请重试。'));xhr.ontimeout=()=>reject(new Error('上传超时，请重试。'));xhr.send(file)})}
+function upload(file,mime){return new Promise((resolve,reject)=>{const xhr=new XMLHttpRequest();xhr.open('POST',activeOrigin+'/api/upload');xhr.timeout=600000;xhr.setRequestHeader('Authorization','Bearer '+token);xhr.setRequestHeader('Content-Type',mime);xhr.upload.onprogress=e=>{if(e.lengthComputable)$('#submit-reference').textContent='上传 '+Math.round(e.loaded/e.total*100)+'%'};xhr.onload=()=>{let d;try{d=JSON.parse(xhr.responseText)}catch{reject(new Error('上传服务异常，请重试。'));return}xhr.status>=200&&xhr.status<300?resolve(d):reject(new Error(d.error||'上传失败'))};xhr.onerror=()=>reject(new Error('上传连接中断，请重试。'));xhr.ontimeout=()=>reject(new Error('上传超时，请重试。'));xhr.send(file)})}
 $('#reference-form').onsubmit=async e=>{
  e.preventDefault();if(busy)return;const type=$('#type').value,id=$('#chapter').value,a=$('#anchor').value,title=$('#title').value.trim(),note=$('#note').value,text=$('#text').value,url=$('#url').value.trim();$('#form-error').textContent='';
  if(type==='link'&&!safeURL(url)){$('#form-error').textContent='请输入完整的 http 或 https 链接。';return}
@@ -199,11 +267,11 @@ $('#reference-form').onsubmit=async e=>{
  busy=false;$('#submit-reference').disabled=false;$('#submit-reference').textContent='添加';$('#save').disabled=!online;renderReferences();if(errors.length){$('#form-error').textContent=errors.join('\n')+(count?'\n成功的文件已添加。':'');$('#files').value=''}else $('#reference-dialog').close();if(count)message(count+' 份素材已上传。点击「发布更新」后，对方即可看到。');
 };
 $('#edit').onclick=()=>$('#login').showModal();
-$('#login-form').onsubmit=async e=>{e.preventDefault();const b=$('#login-form button[type=submit]');b.disabled=true;token=$('#key').value.trim();$('#login-error').textContent='';try{await api('/api/auth',{method:'POST'});sessionStorage.setItem('maker-editor',token);editing=true;$('#login').close();$('#key').value='';renderReferences();status(dirty?'有未发布的修改':'编辑中')}catch(error){token='';sessionStorage.removeItem('maker-editor');$('#login-error').textContent=error.message}finally{b.disabled=false}};
+$('#login-form').onsubmit=async e=>{e.preventDefault();const b=$('#login-form button[type=submit]');b.disabled=true;token=$('#key').value.trim();$('#login-error').textContent='';try{await api('/api/auth',{method:'POST'});editorSession(token);editing=true;$('#login').close();$('#key').value='';renderReferences();status(dirty?'有未发布的修改':'编辑中')}catch(error){token='';editorSession('');$('#login-error').textContent=error.message}finally{b.disabled=false}};
 $('#save').onclick=async()=>{if(!dirty){message('内容已是最新。');return}if(busy)return;busy=true;$('#save').disabled=true;const version=editVersion;status('正在发布…');try{const d=await api('/api/board',{method:'PUT',headers:{'Content-Type':'application/json','If-Match':revision},body:JSON.stringify(state)});revision=d.revision;dirty=version!==editVersion;status(dirty?'还有新的修改未发布':'已发布');message('已发布。对方刷新链接即可看到。')}catch(error){status('未发布，当前修改已保留');message(error.message);if(error.status===409){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify({state,revision},null,2)],{type:'application/json'}));a.download='unpublished-references.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}}finally{busy=false;$('#save').disabled=!online}};
-$('#finish').onclick=()=>{if(busy)return;if(dirty&&!confirm('还有未发布的修改。结束编辑不会发布给对方，继续？'))return;editing=false;token='';sessionStorage.removeItem('maker-editor');renderReferences();status(dirty?'当前修改未发布':'浏览模式')};
+$('#finish').onclick=()=>{if(busy)return;if(dirty&&!confirm('还有未发布的修改。结束编辑不会发布给对方，继续？'))return;editing=false;token='';editorSession('');renderReferences();status(dirty?'当前修改未发布':'浏览模式')};
 $('#share').onclick=async()=>{const url=location.origin+location.pathname;try{await navigator.clipboard.writeText(url);message('链接已复制。')}catch{prompt('复制链接：',url)}};
 $$('[data-close]').forEach(b=>b.onclick=()=>{if(busy&&b.closest('dialog').id==='reference-dialog')return;b.closest('dialog').close()});$('#reference-dialog').addEventListener('cancel',e=>{if(busy)e.preventDefault()});$('#preview').addEventListener('close',()=>$('#preview-content').replaceChildren());
 window.addEventListener('beforeunload',e=>{if(dirty||busy){e.preventDefault();e.returnValue=''}});
-async function init(){try{const r=await fetch('./script.json');if(!r.ok)throw new Error('脚本加载失败');script=await r.json();script.chapters.forEach(c=>names[c.id]=c.number+' '+c.title);$('#chapter').innerHTML=Object.entries(names).map(([id,name])=>`<option value="${id}">${esc(name)}</option>`).join('');renderDocument();await load();if(token){try{await api('/api/auth',{method:'POST'});editing=true;renderReferences()}catch{token='';sessionStorage.removeItem('maker-editor')}}const target=document.getElementById(location.hash.slice(1));if(target)target.scrollIntoView()}catch(e){status('加载失败，请刷新');message(e.message)}}
+async function init(){try{const r=await fetch('./script.json');if(!r.ok)throw new Error('脚本加载失败');script=await r.json();script.chapters.forEach(c=>names[c.id]=c.number+' '+c.title);$('#chapter').innerHTML=Object.entries(names).map(([id,name])=>`<option value="${id}">${esc(name)}</option>`).join('');renderDocument();await load();if(online&&token){try{await api('/api/auth',{method:'POST'});editing=true;renderReferences()}catch{token='';editorSession('')}}const target=document.getElementById(location.hash.slice(1));if(target)target.scrollIntoView()}catch(e){status('加载失败，请刷新');message(e.message)}}
 init();

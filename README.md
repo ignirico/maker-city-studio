@@ -16,4 +16,6 @@ npm run build
 npm run dev
 ```
 
+手机入口 https://mushenzhen-script.pages.dev 从同一域名加载脚本和媒体。Cloudflare Pages 转发共享请求到现有 Sites 存储。GitHub 入口优先使用手机入口读取数据，失败时自动重试原服务。更新手机入口时，先运行 npm run build，再执行 wrangler pages deploy dist/pages --project-name mushenzhen-script --branch main。
+
 本地预览为内存存储，重启即清空，与生产隔离；本地口令 local-preview-only。Sites 源代码与构建包通过插件 source workflow 推送、保存、部署；GitHub Pages 更新需构建并推送 main。
