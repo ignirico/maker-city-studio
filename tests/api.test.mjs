@@ -5,7 +5,7 @@ import { MemoryBucket } from '../scripts/memory-bucket.mjs';
 const env=()=>({BUCKET:new MemoryBucket(),EDITOR_KEY:'test-key'});
 const request=(path,options={})=>new Request('https://example.test'+path,options);
 const auth={Authorization:'Bearer test-key'};
-const valid={boards:{global:{height:720,items:[{id:'test-note',kind:'note',title:'视觉方向',text:'真正的创作参考',note:'00:12 节奏',x:5,y:20,w:60,h:300,z:1,color:'sage'}]}}};
+const valid={boards:{global:{height:720,items:[{id:'test-note',kind:'note',title:'视觉方向',text:'真正的创作参考',note:'00:12 节奏',x:5,y:20,w:60,h:300,z:1,color:'sage',anchor:'2'}]}}};
 test('shared state persists, stale or concurrent first saves cannot overwrite it',async()=>{
  const e=env();const first=await worker.fetch(request('/api/board'),e);assert.equal((await first.json()).revision,'seed');
  const put=rev=>worker.fetch(request('/api/board',{method:'PUT',headers:{...auth,'If-Match':rev},body:JSON.stringify(valid)}),e);

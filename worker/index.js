@@ -20,6 +20,7 @@ export function validateState(state) {
       if (!item || !['file','note','link'].includes(item.kind) || !/^[a-zA-Z0-9-]{1,80}$/.test(item.id) || ids.has(item.id)) throw new Error('卡片格式无效'); ids.add(item.id);
       const w=num(item.w,20,100);
       const result={id:item.id,kind:item.kind,title:text(item.title,120),note:text(item.note,2000),color:['dark','sage','coral','paper'].includes(item.color)?item.color:'dark',x:num(item.x,0,100-w),y:num(item.y,0,18000),w,h:num(item.h,180,1600),z:num(item.z,0,100000)};
+      if(item.anchor!==undefined){if(item.anchor!=='end'&&!/^\d{1,3}$/.test(item.anchor))throw new Error('参考位置无效');result.anchor=String(item.anchor);}
       if (item.kind==='note') result.text=text(item.text,4000);
       if (item.kind==='link') {if(typeof item.url!=='string'||item.url.length>2048||!safeUrl(item.url))throw new Error('参考链接无效');result.url=item.url;}
       if (item.kind==='file') {if(!/^[0-9a-f-]{36}$/.test(item.file)||!MIME_TYPES.has(item.mime))throw new Error('素材文件无效');result.file=item.file;result.mime=item.mime;}
