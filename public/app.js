@@ -148,11 +148,20 @@ async function load() {
     }
   }
   if (!boardData) {
+    const reader = location.hostname.endsWith('.chatgpt.site') ? 'https://ignirico.github.io/maker-city-studio/read.html' : './read.html';
+    const link = $('#read-published');
+    link.href = reader + location.hash;
+    link.hidden = false;
+    if (!new URLSearchParams(location.search).has('edit') && ['ignirico.github.io','mushenzhen-script.pages.dev'].includes(location.hostname)) {
+      location.replace(link.href);
+      return;
+    }
     online = false;
     status('未能连接共享参考');
     $('#retry').hidden = false;
     return;
   }
+  $('#read-published').hidden = true;
   state = boardData.state;
   revision = boardData.revision;
   online = true;
@@ -273,5 +282,12 @@ $('#finish').onclick=()=>{if(busy)return;if(dirty&&!confirm('还有未发布的�
 $('#share').onclick=async()=>{const url=location.origin+location.pathname;try{await navigator.clipboard.writeText(url);message('链接已复制。')}catch{prompt('复制链接：',url)}};
 $$('[data-close]').forEach(b=>b.onclick=()=>{if(busy&&b.closest('dialog').id==='reference-dialog')return;b.closest('dialog').close()});$('#reference-dialog').addEventListener('cancel',e=>{if(busy)e.preventDefault()});$('#preview').addEventListener('close',()=>$('#preview-content').replaceChildren());
 window.addEventListener('beforeunload',e=>{if(dirty||busy){e.preventDefault();e.returnValue=''}});
-async function init(){try{const r=await fetch('./script.json');if(!r.ok)throw new Error('脚本加载失败');script=await r.json();script.chapters.forEach(c=>names[c.id]=c.number+' '+c.title);$('#chapter').innerHTML=Object.entries(names).map(([id,name])=>`<option value="${id}">${esc(name)}</option>`).join('');renderDocument();await load();if(online&&token){try{await api('/api/auth',{method:'POST'});editing=true;renderReferences()}catch{token='';editorSession('')}}const target=document.getElementById(location.hash.slice(1));if(target)target.scrollIntoView()}catch(e){status('加载失败，请刷新');message(e.message)}}
-init();
+async function init(){try{const r=await fetch('./script.json');if(!r.ok)throw new Error('脚本加载失败');script=await r.json();script.chapters.forEach(c=>names[c.id]=c.number+' '+c.title);$('#chapter').innerHTML=Object.entries(names).map(([id,name])=>`<option value="${id}">${esc(name)}</option>`).join('');renderDocument();await load();if(online&&token){try{await api('/api/auth',{method:'POST'});editing=true;renderReferences()}catch{token='';editorSession('')}}if(online&&!editing&&new URLSearchParams(location.search).get('edit')==='1') $('#login').showModal();const target=document.getElementById(location.hash.slice(1));if(target)target.scrollIntoView()}catch(e){status('加载失败，请刷新');message(e.message)}}
+const mobileReader = location.hostname === 'ignirico.github.io' ? './read.html'
+  : location.hostname.endsWith('.chatgpt.site') ? mobileOrigin + '/read.html' : null;
+if (mobileReader && /iPhone|iPad|Android|Mobile/i.test(navigator.userAgent)
+    && !new URLSearchParams(location.search).has('edit')) {
+  location.replace(mobileReader + location.hash);
+} else {
+  init();
+}

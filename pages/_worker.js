@@ -1,3 +1,5 @@
+import {renderReader} from './reader.js';
+
 const upstream = 'https://maker-city-reference-studio.ignirico.chatgpt.site';
 const github = 'https://ignirico.github.io';
 const methods = {
@@ -13,9 +15,36 @@ function applyCors(headers) {
   headers.set('Access-Control-Expose-Headers', 'ETag, Content-Length, Content-Range, Accept-Ranges');
 }
 
+async function readingPage(request, env) {
+  const origin = new URL(request.url).origin;
+  const asset = name => env.ASSETS.fetch(new URL(name, origin));
+  try {
+    // Fetch the current publication on the server. The phone receives HTML and a native player.
+    const [board, script, manifest] = await Promise.all([
+      fetch(upstream + '/api/board', {signal: AbortSignal.timeout(4000)}),
+      asset('/script.json'), asset('/published/version.json'),
+    ]);
+    if (!board.ok || !script.ok || !manifest.ok) throw new Error('Live reader unavailable');
+    const html = renderReader(await script.json(), await board.json(), new Set((await manifest.json()).files), origin);
+    return new Response(request.method === 'HEAD' ? null : html, {headers:{
+      'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','X-Robots-Tag':'noindex, nofollow'
+    }});
+  } catch {
+    return env.ASSETS.fetch(new Request(new URL('/read', origin), {method:request.method}));
+  }
+}
+
 export default {
   async fetch(request, env) {
     const { pathname } = new URL(request.url);
+    if (['/','/read','/read.html','/index.html'].includes(pathname) && ['GET','HEAD'].includes(request.method)) {
+      const home = pathname === '/' || pathname === '/index.html';
+      const handheld = /Mobile|iPhone|iPad|Android/i.test(request.headers.get('User-Agent') || '');
+      if (new URL(request.url).searchParams.get('edit') === '1' || (home && !handheld)) {
+        return env.ASSETS.fetch(new Request(new URL('/', request.url), {method: request.method}));
+      }
+      return readingPage(request, env);
+    }
     if (!pathname.startsWith('/api/') && !pathname.startsWith('/media/')) {
       return env.ASSETS.fetch(request);
     }

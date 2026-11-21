@@ -1,0 +1,46 @@
+name: Publish script and reference films
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '13,43 * * * *'
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: script-pages
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.release.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check whether the published references changed
+        id: changes
+        shell: bash
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = schedule ]; then
+            live=$(curl -fsS --retry 2 https://mushenzhen-script.pages.dev/api/board | jq -er .revision)
+            last=$(curl -fsS https://ignirico.github.io/maker-city-studio/published/version.json | jq -er .revision) || last=''
+            if [ "$live" = "$last" ]; then
+              echo 'skip=true' >> "$GITHUB_OUTPUT"
+            fi
+          fi
+      - if: steps.changes.outputs.skip != 'true'
+        run: node scripts/build-reader.mjs docs
+      - if: steps.changes.outputs.skip != 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+          retention-days: 1
+      - if: steps.changes.outputs.skip != 'true'
+        id: release
+        uses: actions/deploy-pages@v4
